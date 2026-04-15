@@ -262,6 +262,68 @@ impl MemorySet {
             false
         }
     }
+
+    ///ok
+    pub fn mmap(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> bool {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        if start_vpn > end_vpn {
+            return false;
+        }
+        if start_vpn == end_vpn {
+            return true;
+        }
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            if self.page_table.translate(vpn).is_some() {
+                return false;
+            }
+        }
+
+        let mut map_area = MapArea::new(start_va, end_va, MapType::Framed, permission);
+        let mut mapped_vpns: Vec<VirtPageNum> = Vec::new();
+        let pte_flags = PTEFlags::from_bits(map_area.map_perm.bits).unwrap();
+        for vpn in map_area.vpn_range {
+            let frame = match frame_alloc() {
+                Some(frame) => frame,
+                None => {
+                    for mapped_vpn in mapped_vpns {
+                        self.page_table.unmap(mapped_vpn);
+                        map_area.data_frames.remove(&mapped_vpn);
+                    }
+                    return false;
+                }
+            };
+            let ppn = frame.ppn;
+            self.page_table.map(vpn, ppn, pte_flags);
+            map_area.data_frames.insert(vpn, frame);
+            mapped_vpns.push(vpn);
+        }
+        self.areas.push(map_area);
+        true
+    }
+    ///ok unmmap
+    pub fn unmmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> bool{
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        let area_id = match self
+            .areas
+            .iter()
+            .position(|area| area.vpn_range.get_start() == start_vpn && area.vpn_range.get_end() == end_vpn)
+        {
+            Some(id) => id,
+            None => return false,
+        };
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            if self.page_table.translate(vpn).is_none() {
+                return false;
+            }
+        }
+        let mut area = self.areas.remove(area_id);
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            area.unmap_one(&mut self.page_table, vpn);
+        }
+        true
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

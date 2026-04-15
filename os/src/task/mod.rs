@@ -23,6 +23,14 @@ use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
+///ok
+pub fn increase_current_syscall_count(syscall_id: usize) {
+    TASK_MANAGER.increase_current_syscall_count(syscall_id);
+}
+///ok
+pub fn get_current_syscall_count(syscall_id: usize) -> isize {
+    TASK_MANAGER.get_current_syscall_count(syscall_id)
+}
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -133,6 +141,20 @@ impl TaskManager {
         inner.tasks[cur].change_program_brk(size)
     }
 
+    /// mmap in current running task
+    fn mmap_current(&self, start: usize, len: usize, prot: usize) -> bool {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].mmap(start, len, prot)
+    }
+
+    /// munmap in current running task
+    fn munmap_current(&self, start: usize, len: usize) -> bool {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].munmap(start, len)
+    }
+
     /// Switch current `Running` task to the task we have found,
     /// or there is no `Ready` task and we can exit with all applications completed
     fn run_next_task(&self) {
@@ -153,6 +175,25 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// ok
+    fn increase_current_syscall_count(&self, syscall_id: usize) {
+    let mut inner = self.inner.exclusive_access();
+    let cur = inner.current_task;
+    if syscall_id < inner.tasks[cur].sys_call_times.len() {
+        inner.tasks[cur].sys_call_times[syscall_id] += 1;
+    }
+}
+
+    fn get_current_syscall_count(&self, syscall_id: usize) -> isize {
+    let inner = self.inner.exclusive_access();
+    let cur = inner.current_task;
+    if syscall_id < inner.tasks[cur].sys_call_times.len() {
+        inner.tasks[cur].sys_call_times[syscall_id] as isize
+    } else {
+        -1
+    }
+}
 }
 
 /// Run the first task in task list.
@@ -201,4 +242,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// mmap for current running task
+pub fn mmap_current(start: usize, len: usize, prot: usize) -> bool {
+    TASK_MANAGER.mmap_current(start, len, prot)
+}
+
+/// munmap for current running task
+pub fn munmap_current(start: usize, len: usize) -> bool {
+    TASK_MANAGER.munmap_current(start, len)
 }

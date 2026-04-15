@@ -28,6 +28,8 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+    ///ok
+    pub sys_call_times: [usize;500],
 }
 
 impl TaskControlBlock {
@@ -55,6 +57,7 @@ impl TaskControlBlock {
             kernel_stack_top.into(),
             MapPermission::R | MapPermission::W,
         );
+        let times: [usize; 500] = [0;500];
         let task_control_block = Self {
             task_status,
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
@@ -63,6 +66,7 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            sys_call_times: times
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -95,6 +99,34 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// mmap user memory for current task
+    pub fn mmap(&mut self, start: usize, len: usize, prot: usize) -> bool {
+        let end = match start.checked_add(len) {
+            Some(v) => v,
+            None => return false,
+        };
+        let mut map_perm = MapPermission::U;
+        if prot & 0x1 != 0 {
+            map_perm |= MapPermission::R;
+        }
+        if prot & 0x2 != 0 {
+            map_perm |= MapPermission::W;
+        }
+        if prot & 0x4 != 0 {
+            map_perm |= MapPermission::X;
+        }
+        self.memory_set.mmap(VirtAddr(start), VirtAddr(end), map_perm)
+    }
+
+    /// munmap user memory for current task
+    pub fn munmap(&mut self, start: usize, len: usize) -> bool {
+        let end = match start.checked_add(len) {
+            Some(v) => v,
+            None => return false,
+        };
+        self.memory_set.unmmap(VirtAddr(start), VirtAddr(end))
     }
 }
 
