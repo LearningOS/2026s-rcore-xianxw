@@ -141,15 +141,25 @@ impl PageTable {
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.find_pte(vpn).map(|pte| *pte)
+        self.find_pte(vpn).and_then(|pte| {
+            if pte.is_valid() {
+                Some(*pte)
+            } else {
+                None
+            }
+        })
     }
     /// get the physical address from the virtual address
     pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
-        self.find_pte(va.clone().floor()).map(|pte| {
-            let aligned_pa: PhysAddr = pte.ppn().into();
-            let offset = va.page_offset();
-            let aligned_pa_usize: usize = aligned_pa.into();
-            (aligned_pa_usize + offset).into()
+        self.find_pte(va.clone().floor()).and_then(|pte| {
+            if pte.is_valid() {
+                let aligned_pa: PhysAddr = pte.ppn().into();
+                let offset = va.page_offset();
+                let aligned_pa_usize: usize = aligned_pa.into();
+                Some((aligned_pa_usize + offset).into())
+            } else {
+                None
+            }
         })
     }
     /// get the token from the page table
